@@ -12,6 +12,11 @@ def relative_error_total_energy(target, prediction):
 def get_mae(target, prediction):
     return mean_absolute_error(target, prediction)
 
+def get_eac(target, prediction):
+    num = np.abs(target - prediction).sum()
+    den = 2*target.sum()
+    return (1 - num/den)
+
 def get_relative_error(target, prediction):
     return np.mean(np.nan_to_num(np.abs(target - prediction) / np.maximum(target, prediction)))
 
@@ -179,20 +184,17 @@ def compute_metrics(all_predictions,all_targets,all_metrics=True,verbose=False):
 
 
 def compute_regress_metrics(target, prediction):
-    sae = get_sae(target, prediction, 8)
+    eac = get_eac(target, prediction, 8)
     mae = get_mae(target, prediction)
     nade = get_nde(target, prediction)
-    re   = get_relative_error(target, prediction)
-    ret  = relative_error_total_energy(target, prediction)
+    
    
-    metrics = OrderedDict([('SAE', sae),
+    metrics = OrderedDict([('EAC', eac),
                         ('MAE', mae),
-                        ('NDE', nade),
-                        ('RE', re),
-                        ('RET', ret)])
+                        ('NDE', nade)])
     
     metrics_dict = {}
-    metrics_dict['SAE'] = metrics["SAE"]
+    metrics_dict['EAC'] = metrics["EAC"]
     metrics_dict['MAE'] = metrics["MAE"]
     metrics_dict['NDE'] = metrics["NDE"]
     
