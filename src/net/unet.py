@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .layers import Conv1D, Deconv1D
+from .layers import Conv1D, Deconv1D, AttentionLayer
 
 class DoubleConv(nn.Module):
     """
@@ -12,7 +12,8 @@ class DoubleConv(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             Conv1D(in_ch, out_ch),
-            Conv1D(out_ch, out_ch)
+            AttentionLayer(out_ch, out_ch, out_ch),
+            #Conv1D(out_ch, out_ch)
         )
     def forward(self, x):
         return self.net(x)
@@ -48,8 +49,6 @@ class Up(nn.Module):
         # Concatenate along the channels axis
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
-
-
 
 
 class UNetBaseline(nn.Module):
