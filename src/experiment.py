@@ -48,8 +48,8 @@ class NILMExperiment(object):
         file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}"
         self.saved_model_path   = f"{self.checkpoint_path}/{file_name}_checkpoint.pt"
         self.arch = file_name
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_maF1', mode="max", save_top_k=1)
-        early_stopping = pl.callbacks.EarlyStopping(monitor='val_maF1', min_delta=1e-4, patience=50, mode="max")
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
+        early_stopping = pl.callbacks.EarlyStopping(monitor='val_F1', min_delta=1e-4, patience=20, mode="max")
         logger = DictLogger(self.logs_path, name=file_name, version=self.params['exp_name'])
         trainer = pl.Trainer(
                     logger = logger,
