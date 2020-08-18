@@ -73,10 +73,10 @@ class UNetBaseline(nn.Module):
             layers.append(Up(feats, feats // 2))
             feats //= 2
 
-        conv = nn.Conv1d(feats, num_classes, kernel_size=1)
-        conv = nn.utils.weight_norm(conv)
-        nn.init.xavier_uniform_(conv.weight)
-        layers.append(conv)
+        #conv = nn.Conv1d(feats, num_classes, kernel_size=1)
+        #conv = nn.utils.weight_norm(conv)
+        #nn.init.xavier_uniform_(conv.weight)
+        #layers.append(conv)
         self.layers = nn.ModuleList(layers)
 
     def forward(self, x):
@@ -86,9 +86,7 @@ class UNetBaseline(nn.Module):
             xi.append(layer(xi[-1]))
             
         for i, layer in enumerate(self.layers[self.num_layers:-1]):
-            xi[-1] = layer(xi[-1], xi[-2 - i])
-            
-        out = self.layers[-1](xi[-1])
-       
-        return out
+            xi[-1] = layer(xi[-1], xi[-2 - i])  
+        #out = self.layers[-1](xi[-1])
+        return xi[-1]
 

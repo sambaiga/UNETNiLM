@@ -59,7 +59,7 @@ class UNETNiLM(nn.Module):
                  pool_filter=16):
         super().__init__()
         self.unet = UNetBaseline(num_classes=output_size, num_layers=n_layers, features_start=features_start, n_channels=in_size)
-        self.conv_layer = Encoder(n_channels=output_size, n_kernels=d_model, n_layers=n_layers//2, seq_size=seq_len)
+        self.conv_layer = Encoder(n_channels=features_start, n_kernels=d_model, n_layers=n_layers//2, seq_size=seq_len)
         self.mlp_layer = MLPLayer(in_size=d_model*pool_filter, hidden_arch=[1024], output_size=None)
         self.dropout = nn.Dropout(dropout)
         self.pool_filter = pool_filter
