@@ -79,9 +79,9 @@ class NILMExperiment(object):
 
 
 def run_experiments(model_name="CNN1D", denoise=True,
-                     batch_size = 128, epochs = 50,
+                     batch_size = 128, epochs = 100,
                     sequence_length =99, sample = None, 
-                    dropout = 0.25, data = "ukdale", 
+                    dropout = 0.5, data = "ukdale", 
                     out_size = 5, quantiles=[0.5], n_model_samples=0):        
     exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else f"{data}_{model_name}"
     params = {'n_epochs':epochs,'batch_size':batch_size,
@@ -109,7 +109,7 @@ if __name__ == "__main__":
                 run_experiments(model_name=model_name, 
                                 data = data, 
                                 sample=None, 
-                                epochs=50, 
+                                epochs=100, 
                                 n_model_samples=n_model_samples)       
             
     
