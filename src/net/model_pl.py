@@ -81,64 +81,131 @@ class NILMnet(pl.LightningModule):
         logs = {'val_loss': avg_loss, "val_F1": avg_f1, "val_mae":avg_rmse}
         return {'log':logs}
     
-    def test_step(self, batch, batch_idx):
+    def _mcdropout_step(self, batch):
         x, y, z = batch
         B, T = y.size()
-        logits, pred_power  = self(x)
-        pred_state = torch.max(F.softmax(logits, 1), 1)[1]
-        logs = {"pred_power":pred_power, "pred_state":pred_state, "power":y, "state":z}
+        self.model.train()
+        logit_state_samples = torch.zeros(self.hparams.n_model_samples, B, 2, T).to(y.device)
+        power_samples = torch.zeros(self.hparams.n_model_samples, B, T).to(y.device)
+        # sampling the model, then z and classifying
+        for k in range(self.hparams.n_model_samples):
+            logits, pred_power  = self.model(x)
+            logits =  F.softmax(logits, 1)
+            logit_state_samples[k] = logits
+            power_samples[k] = pred_power
+            
+        logit_state_mean = torch.mean(logit_state_samples, dim=0) 
+        power_mean = torch.mean(power_samples, dim=0)
+        logit_state_std = torch.std(logit_state_samples, dim=0)
+        power_std       = torch.std(power_samples, dim=0)
+        
+        logs = {"sample_power":power_samples, 
+                "sample_state":logit_state_samples,
+                "mu_power":power_mean, 
+                "mu_state":logit_state_mean,
+                "std_power":power_std, 
+                "std_state":power_std,
+                 "power":y, "state":z}
+        return logs
+    
+    
+    def test_step(self, batch, batch_idx):
+        x, y, z = batch
+        if self.hparams.n_model_samples>1:
+            logs = self._mcdropout_step(batch)
+        else:
+            B, T = y.size()
+            self.model.eval()
+            logits, pred_power  = self.model(x)
+            self.model.train()
+            logits_state = F.softmax(logits, 1)
+            logs = {"pred_power":pred_power, "logits_state":logits_state, "power":y, "state":z}
         return logs
     
     def test_epoch_end(self, outputs):
         
-        pred_power = torch.cat([x['pred_power'] for x in outputs], 0).cpu().numpy()
-        pred_state = torch.cat([x['pred_state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
         power = torch.cat([x['power'] for x in outputs], 0).cpu().numpy()
         state = torch.cat([x['state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
+    
+        if  self.hparams.n_model_samples> 1:
+            #mc dropout and batch uncertanity
+            #pred_power_samples = torch.cat([x['sample_power'] for x in outputs], 0).data.cpu().numpy()
+            #pred_state_samples = torch.cat([x['sample_state'] for x in outputs], 0).data.cpu().numpy()
+            
+            pred_mu_power  = torch.cat([x['mu_power'] for x in outputs], 0).data.cpu().numpy()
+            pred_std_power = torch.cat([x['std_power'] for x in outputs], 0).data.cpu().numpy()
+            
+            pred_logits_mean = torch.cat([x['mu_state'] for x in outputs], 0).data
+            pred_logits_std = torch.cat([x['std_state'] for x in outputs], 0).data
+            pred_mu_prob, pred_mu_states = torch.max(pred_logits_mean, 1)
+            pred_std_prob, pred_std_states = torch.max(pred_logits_std, 1)
+            
+            pred_mu_states = pred_mu_states.cpu().numpy().astype(np.int32)
+            pred_std_states = pred_std_states.cpu().numpy()
+            
+            pred_mu_prob = pred_mu_prob.cpu().numpy()
+            pred_std_prob = pred_std_prob.cpu().numpy()
+            
+            
+            class_results, regress_results=self.get_results(pred_mu_power,  pred_mu_states, power, state)
+            
+            logs = {"pred_mu_power":pred_mu_power, 
+                    "pred_std_power":pred_std_power,
+                     "pred_mu_state":pred_mu_states,
+                     "pred_std_state":pred_std_states, 
+                     "prob_mu_state":pred_mu_prob, 
+                     "prob_std_state":pred_std_prob, 
+                     "power":power, "state":state,  
+                     'mlabel_results':class_results, 
+                     'reg_results':regress_results} 
         
-        appliance_data = ukdale_appliance_data if self.hparams.data=="ukdale" else refit_appliance_data
-        import pandas as pd
-        print(pred_power.shape)
-        if len(self.hparams.quantiles)>1:
-            regress_results = {}
-            for idx, app in enumerate(list(appliance_data.keys())):
-                quantile_regress_results = []
-                power[:,idx] = (power[:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                for q_i, q in enumerate(self.hparams.quantiles):
-                    pred_power[:,q_i, idx] = (pred_power[:,q_i, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                    pred_power[:,q_i, idx] = np.where(pred_power[:,q_i, idx]<0, 0, pred_power[:,q_i, idx])
-                    result = compute_regress_metrics(power[:,idx], pred_power[:,q_i, idx])
-                    result = pd.DataFrame.from_dict(result, orient="index")
-                    quantile_regress_results.append(result)
-                quantile_regress_results = pd.concat(quantile_regress_results, axis=1) 
-                quantile_regress_results.columns = [str(round(q*100,2)) for q in self.hparams.quantiles]   
-                regress_results[app] = quantile_regress_results
-                     
+            
         else:    
-            regress_results = []
-            
-            for idx, app in enumerate(list(appliance_data.keys())):
-                
-                pred_power[:,idx] = (pred_power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                pred_power[:,idx] = np.where(pred_power[:,idx]<0, 0, pred_power[:,idx])
-                power[:,idx] = (power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                result = compute_regress_metrics(power[:,idx], pred_power[:,idx])
-                result = pd.DataFrame.from_dict(result, orient="index")
-                regress_results.append(result)
-            
-            regress_results = pd.concat(regress_results, axis=1)
-            regress_results.columns = list(appliance_data.keys())
-            regress_results = regress_results.append(exbF1)  
+            pred_power = torch.cat([x['pred_power'] for x in outputs], 0).cpu().numpy()
+            pred_logits = torch.cat([x['logits_state'] for x in outputs], 0)
+            prob_states, pred_states = torch.max(pred_logits, 1)
+            prob_states = prob_states.cpu().numpy()
+            pred_states = pred_states.cpu().numpy().astype(np.int32)
+            if len(self.hparams.quantiles)>2:
+                idx = len(self.hparams.quantiles)//2
+                class_results, regress_results=self.get_results(pred_power[:,idx],  
+                                                                pred_states, 
+                                                                power, 
+                                                                state)
+            else:
+                class_results, regress_results=self.get_results(pred_power,  
+                                                                pred_states, 
+                                                                power, 
+                                                                state)    
+            logs = {"pred_power":pred_power, 
+                     "pred_state":pred_states, 
+                      "prob_state":prob_states, 
+                        "power":power, "state":state,  
+                         'mlabel_results':class_results, 
+                            'reg_results':regress_results} 
         
-        #exbF1={"exbF1":example_f1_score(state,pred_state, per_sample=True, axis=0)} 
-        #exbF1=pd.DataFrame.from_dict(exbF1, orient="index")  
-        #exbF1.columns = list(appliance_data.keys())
-        results = compute_metrics(state, pred_state, all_metrics=True, verbose=False)
-        results=pd.DataFrame.from_dict(results, orient="index")
-        logs = {"pred_power":pred_power, "pred_state":pred_state, 
-                "power":power, "state":state,  'results':results, 'reg_results':regress_results}
+        
+        
+        
+       
         return logs
-        
+     
+    def get_results(self, pred_power, pred_state, power, state):    
+        import pandas as pd
+        appliance_data = ukdale_appliance_data if self.hparams.data=="ukdale" else refit_appliance_data
+        regress_results = []
+        for idx, app in enumerate(list(appliance_data.keys())):
+            pred_power[:,idx] = (pred_power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
+            pred_power[:,idx] = np.where(pred_power[:,idx]<0, 0, pred_power[:,idx])
+            power[:,idx] = (power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
+            result = compute_regress_metrics(power[:,idx], pred_power[:,idx])
+            result = pd.DataFrame.from_dict(result, orient="index")
+            regress_results.append(result)
+        regress_results = pd.concat(regress_results, axis=1)
+        regress_results.columns = list(appliance_data.keys())
+        classification_results = compute_metrics(state, pred_state)
+        classification_results=pd.DataFrame.from_dict(classification_results, orient="index")
+        return classification_results, regress_results
         
     def configure_optimizers(self):  
         optim = torch.optim.Adam(self.parameters(),lr=self.hparams.learning_rate, betas=(self.hparams.beta_1, self.hparams.beta_2))
@@ -244,5 +311,7 @@ class NILMnet(pl.LightningModule):
         parser.add_argument('--data', default="ukdale", type=str)
         parser.add_argument('--quantiles', default=[0.0025,0.1, 0.5, 0.9, 0.975], type=list)
         parser.add_argument('--num_workers', default=4, type=int)
+        parser.add_argument('--n_model_samples', default=100, type=int)
+        
         #parser.add_argument("-f", "--fff", help="a dummy argument to fool ipython", default="1")
         return parser

@@ -4,6 +4,31 @@ import torch.nn.functional as F
 import numpy as np
 import math
 
+
+class BNN1D(nn.Module):
+    #https://github.com/hmi88/mcbn/blob/master/MCBN_src/model/mcbn.py
+    def __init__(self, n_in_feat):
+        super().__init__()
+        self.n_in_feat = n_in_feat
+        self.bn1d = nn.BatchNorm1d(n_in_feat, eps=1e-5)
+        self.bn1d.weight.data.fill_(1)
+        self.bn1d.bias.data.zero_()
+        
+
+    def forward(self, x):
+        if self.training:
+            y = self.bn1d(x)
+        else:
+            x_size = x.size()
+            half_batch = x_size[0]//2
+            self.train()
+            self.bn1d.running_mean = torch.zeros(self.n_in_feat)
+            self.bn1d.running_var = torch.ones(self.n_in_feat)
+            _ = self.bn1d(x[half_batch:])
+            self.eval()
+            y = self.bn1d(x)
+        return y
+
 class MLPLayer(nn.Module):
     def __init__(self, in_size, 
                  hidden_arch=[128, 512, 1024], 
@@ -22,7 +47,7 @@ class MLPLayer(nn.Module):
             self.layers.append(layer)
                     
             if batch_norm and i!=0:
-                bn = nn.BatchNorm1d(layer_sizes[i+1])
+                bn = BNN1D(layer_sizes[i+1])
                 self.layers.append(bn)
      
             self.layers.append(activation)
@@ -65,7 +90,7 @@ class Conv1D(nn.Module):
         if not last:
             self.net = nn.Sequential(
                 self.conv,
-                nn.BatchNorm1d(n_kernels),
+                BNN1D(n_kernels),
                 activation)
         else:
             self.net = self.conv
@@ -93,11 +118,12 @@ class Deconv1D(nn.Module):
         if not last:
             self.net = nn.Sequential(
                 self.deconv,
-                nn.BatchNorm1d(n_kernels),
+                BNN1D(n_kernels),
                 activation
             )
         else:
             self.net = self.deconv
+        nn.utils.weight_norm(self.deconv)        
         nn.init.xavier_uniform_(self.deconv.weight)
 
     def forward(self, x):

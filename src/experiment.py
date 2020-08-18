@@ -69,42 +69,20 @@ class NILMExperiment(object):
         print(f"fit model for { file_name}")
         trainer.fit(model)
         results = trainer.test(model)
-        results_path = f"{self.results_path}{self.params['exp_name']}"
+        if self.params['n_model_samples']>1:
+            results_path = f"{self.results_path}{self.params['exp_name']}_uncertainity"
+        else:
+            results_path = f"{self.results_path}{self.params['exp_name']}"    
         np.save(results_path+"results.npy", results)
            
             
-    
-def refit_exp(model_name="CNN1DTransformer"): 
-    batch_size = 128
-    epochs = 50
-    sequence_length =99
-    sample = None
-    dropout = 0.25
-    data = "refit"
-    exp_name = f"REFIT_{model_name}"
-    out_size = 5
-    denoise = True
-    params = {'n_epochs':epochs,'batch_size':batch_size,
-                'sequence_length':sequence_length,
-                'model_name':model_name,
-                'dropout':dropout,
-                'exp_name':exp_name,
-                'clip_value':10,
-                'sample':sample,
-                'out_size':out_size,
-                'data_path':"../data/",
-                'data':data,
-                "denoise":denoise,
-                 "checkpoint_path" :f"../checkpoints/{exp_name}_{model_name}"
-                }
-    exp = NILMExperiment(params)
-    exp.partial_fit()
+
 
 def run_experiments(model_name="CNN1D", denoise=True,
                      batch_size = 128, epochs = 50,
                     sequence_length =99, sample = None, 
                     dropout = 0.25, data = "ukdale", 
-                    out_size = 5, quantiles=[0.0025,0.1, 0.5, 0.9, 0.975]):        
+                    out_size = 5, quantiles=[0.5], n_model_samples=0):        
     exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else "{data}_{model_name}"
     params = {'n_epochs':epochs,'batch_size':batch_size,
                 'sequence_length':sequence_length,
@@ -113,6 +91,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 'exp_name':exp_name,
                 'clip_value':10,
                 'sample':sample,
+                'n_model_samples':n_model_samples,
                 'out_size':out_size,
                 'data_path':"../data/",
                 'data':data,
@@ -124,9 +103,14 @@ def run_experiments(model_name="CNN1D", denoise=True,
     exp.fit()
 
 if __name__ == "__main__": 
-    for data in ["ukdale", "refit"]:
-        for model_name in ["CNN1D", "UNETNiLM"]:
-            run_experiments(model_name=model_name, data = data, sample=None, epochs=50)       
+    for data in ["ukdale"]:
+        for model_name in ["CNN1D"]:
+            for n_model_samples in [0, 50]:
+                run_experiments(model_name=model_name, 
+                                data = data, 
+                                sample=None, 
+                                epochs=50, 
+                                n_model_samples=n_model_samples)       
             
     
     
