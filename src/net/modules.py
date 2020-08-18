@@ -77,7 +77,9 @@ class UNETNiLM(nn.Module):
         B = x.size(0)
         x = x.permute(0,2,1)
         unet_out = self.dropout(self.unet(x))
+        print(unet_out.shape)
         conv_out = self.conv_layer(unet_out)
+        
         conv_out = self.dropout(F.adaptive_avg_pool1d(conv_out, self.pool_filter).reshape(x.size(0), -1))
         mlp_out  = self.dropout(self.mlp_layer(conv_out))
         states_logits   = self.fc_out_state(mlp_out).reshape(B, 2, -1)

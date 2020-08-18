@@ -12,7 +12,7 @@ class DoubleConv(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             Conv1D(in_ch, out_ch),
-            AttentionLayer(out_ch, out_ch, out_ch),
+            AttentionLayer(out_ch, out_ch, out_ch)
             #Conv1D(out_ch, out_ch)
         )
     def forward(self, x):
