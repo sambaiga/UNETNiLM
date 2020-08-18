@@ -83,7 +83,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
                     sequence_length =99, sample = None, 
                     dropout = 0.25, data = "ukdale", 
                     out_size = 5, quantiles=[0.5], n_model_samples=0):        
-    exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else "{data}_{model_name}"
+    exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else f"{data}_{model_name}"
     params = {'n_epochs':epochs,'batch_size':batch_size,
                 'sequence_length':sequence_length,
                 'model_name':model_name,

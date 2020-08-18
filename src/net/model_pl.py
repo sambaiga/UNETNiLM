@@ -128,7 +128,10 @@ class NILMnet(pl.LightningModule):
         state = torch.cat([x['state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
     
         if  self.hparams.n_model_samples> 1:
-            #mc dropout and batch uncertanity
+            #mc dropout and batch uncertanity according to 
+            #1. https://github.com/icml-mcbn/mcbn: Bayesian Uncertainty Estimation for Batch Normalized Deep Networks,
+            #2. https://arxiv.org/pdf/1506.02142.pdf: Dropout as a Bayesian Approximation:Representing Model Uncertainty in Deep Learning
+            
             #pred_power_samples = torch.cat([x['sample_power'] for x in outputs], 0).data.cpu().numpy()
             #pred_state_samples = torch.cat([x['sample_state'] for x in outputs], 0).data.cpu().numpy()
             
