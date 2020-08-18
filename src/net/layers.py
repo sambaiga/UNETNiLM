@@ -22,8 +22,8 @@ class BNN1D(nn.Module):
             x_size = x.size()
             half_batch = x_size[0]//2
             self.train()
-            self.bn1d.running_mean = torch.zeros(self.n_in_feat)
-            self.bn1d.running_var = torch.ones(self.n_in_feat)
+            self.bn1d.running_mean = torch.zeros(self.n_in_feat).to(x.device)
+            self.bn1d.running_var = torch.ones(self.n_in_feat).to(x.device)
             _ = self.bn1d(x[half_batch:])
             self.eval()
             y = self.bn1d(x)
