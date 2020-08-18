@@ -142,9 +142,9 @@ class NILMnet(pl.LightningModule):
         
     def configure_optimizers(self):  
         optim = torch.optim.Adam(self.parameters(),lr=self.hparams.learning_rate, betas=(self.hparams.beta_1, self.hparams.beta_2))
-        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, patience=self.hparams.patience_scheduler, verbose=True, min_lr=1e-6, mode="min") # note early stopping has patient 3
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, patience=self.hparams.patience_scheduler, verbose=True, min_lr=1e-6, mode="max") # note early stopping has patient 3
         scheduler = {'scheduler':sched, 
-                     'monitor': 'val_mae',
+                     'monitor': 'val_F1',
                      'interval': 'epoch',
                      'frequency': 1}
         return [optim], [scheduler]
