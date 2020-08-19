@@ -50,7 +50,7 @@ class NILMExperiment(object):
         self.arch = file_name
         checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
         early_stopping = pl.callbacks.EarlyStopping(monitor='val_F1', min_delta=1e-4, patience=20, mode="max")
-        logger = DictLogger(self.logs_path, name=file_name, version=self.params['exp_name'])
+        logger = DictLogger(self.logs_path, name=self.MODEL_NAME, version=self.params['exp_name'])
         trainer = pl.Trainer(
                     logger = logger,
                     gradient_clip_val=self.params['clip_value'],
@@ -68,8 +68,9 @@ class NILMExperiment(object):
         model = NILMnet(hparams)
         print(f"fit model for { file_name}")
         trainer.fit(model)
+        model = model.eval()
         results = trainer.test(model)
-        if self.params['n_model_samples']>1:
+        if self.params['mc']:
             results_path = f"{self.results_path}{self.params['exp_name']}_uncertainity"
         else:
             results_path = f"{self.results_path}{self.params['exp_name']}"    
@@ -81,8 +82,8 @@ class NILMExperiment(object):
 def run_experiments(model_name="CNN1D", denoise=True,
                      batch_size = 128, epochs = 100,
                     sequence_length =99, sample = None, 
-                    dropout = 0.5, data = "ukdale", 
-                    out_size = 5, quantiles=[0.5], n_model_samples=0):        
+                    dropout = 0.1, data = "ukdale", 
+                    out_size = 5, quantiles=[0.5], n_model_samples=50, mc=False):        
     exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else f"{data}_{model_name}"
     params = {'n_epochs':epochs,'batch_size':batch_size,
                 'sequence_length':sequence_length,
@@ -97,6 +98,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 'data':data,
                 'quantiles':quantiles,
                 "denoise":denoise,
+                "mc":mc,
                 "checkpoint_path" :f"../checkpoints/{exp_name}"
                 }
     exp = NILMExperiment(params)
@@ -105,12 +107,19 @@ def run_experiments(model_name="CNN1D", denoise=True,
 if __name__ == "__main__": 
     for data in ["ukdale"]:
         for model_name in ["CNN1D"]:
-            for n_model_samples in [0, 50]:
+            for mc in [False, True]:
                 run_experiments(model_name=model_name, 
                                 data = data, 
                                 sample=None, 
-                                epochs=100, 
-                                n_model_samples=n_model_samples)       
+                                epochs=50, 
+                                mc=mc, quantiles=[0.5]) 
+            #fit quantiles      
+            run_experiments(model_name=model_name, 
+                                data = data, 
+                                sample=None, 
+                                epochs=50, 
+                                mc=None,
+                                quantiles=[0.1, 0.5, 0.9])               
             
     
     

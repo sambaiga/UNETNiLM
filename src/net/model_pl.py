@@ -13,6 +13,7 @@ from .utils import ObjectDict, QuantileLoss
 from pytorch_lightning.metrics.functional import f1_score
 
 
+
 class NILMnet(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
@@ -22,22 +23,25 @@ class NILMnet(pl.LightningModule):
         self.q_criterion = QuantileLoss(self.hparams.quantiles)
         if self.hparams.model_name== "CNN1D":
             self.model = CNN1DModel(in_size=self.hparams.in_size, 
-                               output_size=self.hparams.out_size,
+                               num_classes=self.hparams.out_size,
                                d_model=self.hparams.d_model,
                                 dropout=self.hparams.dropout, 
-                               seq_len=self.hparams.seq_len,  
+                               seq_size=self.hparams.seq_len,  
                                n_layers=self.hparams.n_layers, 
                                n_quantiles=len(self.hparams.quantiles),
-                               pool_filter=self.hparams.pool_filter)
+                               mc=self.hparams.mc,
+                               pos_enconding=self.hparams.pos_enconding)
         
         elif self.hparams.model_name=="UNETNiLM":
-            self.model =  UNETNiLM(in_size=self.hparams.in_size, 
-                               output_size=self.hparams.out_size,
+            self.model =  UNETNiLM(n_channels=self.hparams.in_size, 
+                               num_classes=self.hparams.out_size,
                                features_start=self.hparams.d_model//4,
-                               seq_len=self.hparams.seq_len, 
-                               n_layers=self.hparams.n_layers,
+                               seq_size=self.hparams.seq_len, 
+                               num_layers=self.hparams.n_layers,
                                n_quantiles=len(self.hparams.quantiles),
-                               pool_filter=self.hparams.d_model//4
+                               mc=self.hparams.mc,
+                               pos_enconding=self.hparams.pos_enconding,
+                               dropout=self.hparams.dropout
                                )  
             
     def forward(self, x):
@@ -84,12 +88,11 @@ class NILMnet(pl.LightningModule):
     def _mcdropout_step(self, batch):
         x, y, z = batch
         B, T = y.size()
-        self.model.train()
         logit_state_samples = torch.zeros(self.hparams.n_model_samples, B, 2, T).to(y.device)
         power_samples = torch.zeros(self.hparams.n_model_samples, B, T).to(y.device)
         # sampling the model, then z and classifying
         for k in range(self.hparams.n_model_samples):
-            logits, pred_power  = self.model(x)
+            logits, pred_power  = self(x)
             logits =  F.softmax(logits, 1)
             logit_state_samples[k] = logits
             power_samples[k] = pred_power
@@ -111,13 +114,11 @@ class NILMnet(pl.LightningModule):
     
     def test_step(self, batch, batch_idx):
         x, y, z = batch
-        if self.hparams.n_model_samples>1:
+        if  self.hparams.mc:
             logs = self._mcdropout_step(batch)
         else:
             B, T = y.size()
-            self.model.eval()
-            logits, pred_power  = self.model(x)
-            self.model.train()
+            logits, pred_power  = self(x)
             logits_state = F.softmax(logits, 1)
             logs = {"pred_power":pred_power, "logits_state":logits_state, "power":y, "state":z}
         return logs
@@ -127,7 +128,7 @@ class NILMnet(pl.LightningModule):
         power = torch.cat([x['power'] for x in outputs], 0).cpu().numpy()
         state = torch.cat([x['state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
     
-        if  self.hparams.n_model_samples> 1:
+        if  self.hparams.mc:
             #mc dropout and batch uncertanity according to 
             #1. https://github.com/icml-mcbn/mcbn: Bayesian Uncertainty Estimation for Batch Normalized Deep Networks,
             #2. https://arxiv.org/pdf/1506.02142.pdf: Dropout as a Bayesian Approximation:Representing Model Uncertainty in Deep Learning
@@ -293,14 +294,13 @@ class NILMnet(pl.LightningModule):
         """
         # MODEL specific
         parser = ArgumentParser(add_help=False)
-        parser.add_argument('--learning_rate', default=1e-4, type=float)
+        parser.add_argument('--learning_rate', default=1e-3, type=float)
         parser.add_argument('--batch_size', default=4, type=int)
         parser.add_argument('--momentum', default=0.9, type=float)
         parser.add_argument('--beta_1', default=0.999, type=float)
         parser.add_argument('--beta_2', default= 0.98, type=float)
         parser.add_argument('--eps', default=1e-8, type=float)
         parser.add_argument('--patience_scheduler', default=5, type=int)
-        parser.add_argument('--weight_decay', default=0.0005, type=float)
         parser.add_argument('--dropout', default=0.25, type=float)
         parser.add_argument('--d_model', default=128, type=int)
         parser.add_argument('--pool_filter', default=8, type=int)
@@ -309,6 +309,8 @@ class NILMnet(pl.LightningModule):
         parser.add_argument('--out_size', default=5, type=int)
         parser.add_argument('--in_size', default=1, type=int)
         parser.add_argument('--denoise', default=False, type=bool)
+        parser.add_argument('--mc', default=False, type=bool)
+        parser.add_argument('--pos_enconding', default=True, type=bool)
         parser.add_argument('--num_head', default=8, type=int)
         parser.add_argument('--model_name', default="CNN1D", type=str)
         parser.add_argument('--data', default="ukdale", type=str)
