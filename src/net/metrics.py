@@ -4,18 +4,15 @@ import numpy as np
 from sklearn.metrics import f1_score, mean_absolute_error, mean_squared_error
 from collections import OrderedDict
 
-def relative_error_total_energy(target, prediction):
-    E_pred = np.sum(prediction)
-    E_ground = np.sum(target)
-    return np.abs(E_pred - E_ground) / float(max(E_pred,E_ground))
+
 
 def get_mae(target, prediction):
     return mean_absolute_error(target, prediction)
 
 def get_eac(target, prediction):
-    num = np.abs(target - prediction).sum()
-    den = 2*target.sum()
-    eac = 1 - num/den
+    num = np.sum(np.abs(prediction-target))
+    den = (np.sum(target))
+    eac = 1 - (num/den)/2
     return np.where(eac<0, 0, eac)
 
 def get_relative_error(target, prediction):

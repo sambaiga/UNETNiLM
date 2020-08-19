@@ -42,39 +42,42 @@ refit_appliance_data = {
 
 ukdale_appliance_data = {
     "kettle": {
-        "mean": 700,
-        "std": 1000,
+        "mean": 1.923658e+01,
+        "std": 2.059316e+02,
         'window':10,
         'on_power_threshold': 2000,
-        'max_on_power': 3998
+        'max_on_power': 3.629000e+03
     },
     "fridge": {
-        "mean": 200,
-        "std": 400,
+        "mean": 4.034609e+01,
+        "std": 5.338638e+01	,
         "window":50,
         'on_power_threshold': 50,
+         'max_on_power': 1.856000e+03
         
       
     },
     "dishwasher": {
-        "mean": 700,
-        "std": 700,
+        "mean": 2.297803e+01,
+        "std": 2.185563e+02,
         "window":100,
-        'on_power_threshold': 10
+        'on_power_threshold': 10,
+         'max_on_power': 3.057000e+03
     },
     
     "washingmachine": {
-        "mean": 400,
-        "std": 700,
+        "mean": 4.054419e+01,
+        "std": 2.473060e+02,
         "window":100,
         'on_power_threshold': 20,
-        'max_on_power': 3999
+        'max_on_power': 3.956000e+03
     },
     "microwave": {
-        "mean": 500,
-        "std": 800,
+        "mean": 1.262959e+01,
+        "std": 1.319137e+02,
         "window":10,
         'on_power_threshold': 200,
+        'max_on_power': 3.180000e+03
        
     },
 }
