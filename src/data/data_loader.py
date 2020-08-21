@@ -34,7 +34,7 @@ class Dataset(torch.utils.data.Dataset):
         self.targets = targets
         self.states  = states
         seq_len = seq_len  #if seq_len% 2==0 else seq_len+1
-        self.seq_len = seq_len
+        self.seq_len = seq_len+1
         self.len = self.inputs.shape[0] - self.seq_len
         self.indices = np.arange(self.inputs.shape[0])
     def __len__(self):

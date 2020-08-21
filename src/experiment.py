@@ -50,7 +50,7 @@ class NILMExperiment(object):
         self.arch = file_name
         checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
         early_stopping = pl.callbacks.EarlyStopping(monitor='val_F1', min_delta=1e-4, patience=20, mode="max")
-        logger = DictLogger(self.logs_path, name=self.MODEL_NAME, version=self.params['exp_name'])
+        logger = DictLogger(self.logs_path, name=file_name, version=self.params['exp_name'])
         trainer = pl.Trainer(
                     logger = logger,
                     gradient_clip_val=self.params['clip_value'],
@@ -68,23 +68,22 @@ class NILMExperiment(object):
         model = NILMnet(hparams)
         print(f"fit model for { file_name}")
         trainer.fit(model)
-        model = model.eval()
         results = trainer.test(model)
-        if self.params['mc']:
-            results_path = f"{self.results_path}{self.params['exp_name']}_uncertainity"
-        else:
-            results_path = f"{self.results_path}{self.params['exp_name']}"    
+        results_path = f"{self.results_path}{self.params['exp_name']}"
         np.save(results_path+"results.npy", results)
            
             
-
-
-def run_experiments(model_name="CNN1D", denoise=True,
-                     batch_size = 128, epochs = 100,
-                    sequence_length =99, sample = None, 
-                    dropout = 0.1, data = "ukdale", 
-                    out_size = 5, quantiles=[0.5], n_model_samples=50, mc=False):        
-    exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else f"{data}_{model_name}"
+    
+def refit_exp(model_name="CNN1DTransformer"): 
+    batch_size = 128
+    epochs = 50
+    sequence_length =99
+    sample = None
+    dropout = 0.25
+    data = "refit"
+    exp_name = f"REFIT_{model_name}"
+    out_size = 5
+    denoise = True
     params = {'n_epochs':epochs,'batch_size':batch_size,
                 'sequence_length':sequence_length,
                 'model_name':model_name,
@@ -92,34 +91,42 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 'exp_name':exp_name,
                 'clip_value':10,
                 'sample':sample,
-                'n_model_samples':n_model_samples,
+                'out_size':out_size,
+                'data_path':"../data/",
+                'data':data,
+                "denoise":denoise,
+                 "checkpoint_path" :f"../checkpoints/{exp_name}_{model_name}"
+                }
+    exp = NILMExperiment(params)
+    exp.partial_fit()
+
+def run_experiments(model_name="CNN1D", denoise=True,
+                     batch_size = 128, epochs = 50,
+                    sequence_length =99, sample = None, 
+                    dropout = 0.25, data = "ukdale", 
+                    out_size = 5, quantiles=[0.0025,0.1, 0.5, 0.9, 0.975]):        
+    exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else "{data}_{model_name}"
+    params = {'n_epochs':epochs,'batch_size':batch_size,
+                'sequence_length':sequence_length,
+                'model_name':model_name,
+                'dropout':dropout,
+                'exp_name':exp_name,
+                'clip_value':10,
+                'sample':sample,
                 'out_size':out_size,
                 'data_path':"../data/",
                 'data':data,
                 'quantiles':quantiles,
                 "denoise":denoise,
-                "mc":mc,
                 "checkpoint_path" :f"../checkpoints/{exp_name}"
                 }
     exp = NILMExperiment(params)
     exp.fit()
 
 if __name__ == "__main__": 
-    for data in ["ukdale"]:
-        for model_name in ["CNN1D"]:
-            for mc in [False, True]:
-                run_experiments(model_name=model_name, 
-                                data = data, 
-                                sample=None, 
-                                epochs=50, 
-                                mc=mc, quantiles=[0.5]) 
-            #fit quantiles      
-            run_experiments(model_name=model_name, 
-                                data = data, 
-                                sample=None, 
-                                epochs=50, 
-                                mc=None,
-                                quantiles=[0.1, 0.5, 0.9])               
+    for data in ["ukdale", "refit"]:
+        for model_name in ["CNN1D", "UNETNiLM"]:
+            run_experiments(model_name=model_name, data = data, sample=None, epochs=50)       
             
     
     

@@ -20,14 +20,14 @@ refit_appliance_data = {
     "dishwasher": {
         "mean": 700,
         "std": 1000,
-        "window":100,
+        "window":50,
         'on_power_threshold': 10,
         'max_on_power': 3964
     },
     "washingmachine": {
         "mean": 400,
         "std": 700,
-        "window":100,
+        "window":50,
         'on_power_threshold': 20,
         'max_on_power': 3999
     },
@@ -42,42 +42,39 @@ refit_appliance_data = {
 
 ukdale_appliance_data = {
     "kettle": {
-        "mean": 1.923658e+01,
-        "std": 2.059316e+02,
+        "mean": 700,
+        "std": 1000,
         'window':10,
         'on_power_threshold': 2000,
-        'max_on_power': 3.629000e+03
+        'max_on_power': 3998
     },
     "fridge": {
-        "mean": 4.034609e+01,
-        "std": 5.338638e+01	,
+        "mean": 200,
+        "std": 400,
         "window":50,
         'on_power_threshold': 50,
-         'max_on_power': 1.856000e+03
         
       
     },
     "dishwasher": {
-        "mean": 2.297803e+01,
-        "std": 2.185563e+02,
-        "window":100,
-        'on_power_threshold': 10,
-         'max_on_power': 3.057000e+03
+        "mean": 700,
+        "std": 700,
+        "window":50,
+        'on_power_threshold': 10
     },
     
     "washingmachine": {
-        "mean": 4.054419e+01,
-        "std": 2.473060e+02,
-        "window":100,
+        "mean": 400,
+        "std": 700,
+        "window":50,
         'on_power_threshold': 20,
-        'max_on_power': 3.956000e+03
+        'max_on_power': 3999
     },
     "microwave": {
-        "mean": 1.262959e+01,
-        "std": 1.319137e+02,
+        "mean": 500,
+        "std": 800,
         "window":10,
         'on_power_threshold': 200,
-        'max_on_power': 3.180000e+03
        
     },
 }
@@ -165,7 +162,6 @@ def pre_process_data(data_type="test", data_path="../../data/REFIT/", save_path=
 def pre_process_uk_dale(data_type="training",  data_path="../../data/UKDALE/", save_path="../data/ukdale/"):
     targets = []
     states = [] 
-    powers = []
     data = pd.read_csv(f"{data_path}ukdale_house_1_{data_type}.csv")
     columns = {'fridge freezer':'fridge', 'washer dryer':'washingmachine', 'dish washer':'dishwasher', 'kettle':'kettle', 'microwave':'microwave'}
     data.rename(columns, axis=1, inplace=True)
@@ -175,10 +171,8 @@ def pre_process_uk_dale(data_type="training",  data_path="../../data/UKDALE/", s
         meter=quantile_filter(ukdale_appliance_data[app]['window'], power, p=50)
         state = binarization(meter,ukdale_appliance_data[app]['on_power_threshold'])
         meter = (meter - ukdale_appliance_data[app]['mean'])/ukdale_appliance_data[app]['std']
-        power = (power - ukdale_appliance_data[app]['mean'])/ukdale_appliance_data[app]['std']
         targets.append(meter)
         states.append(state)
-        powers.append(power)
 
     mains_denoise = data.sub_mains.values
     mains_denoise = quantile_filter(10, mains_denoise, 50)
@@ -189,12 +183,11 @@ def pre_process_uk_dale(data_type="training",  data_path="../../data/UKDALE/", s
     mains = (mains - 389)/445
     states = np.stack(states).T
     targets = np.stack(targets).T
-    powers = np.stack(powers).T
+    
     del power, meter, state
     np.save(save_path+f"/{data_type}/denoise_inputs.npy", mains_denoise)
     np.save(save_path+f"/{data_type}/noise_inputs.npy", mains)
     np.save(save_path+f"/{data_type}/targets.npy", targets)
-    np.save(save_path+f"/{data_type}/powers.npy", targets)
     np.save(save_path+f"/{data_type}/states.npy", states)    
 
 if __name__ == "__main__":
