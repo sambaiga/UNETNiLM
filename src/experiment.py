@@ -5,6 +5,7 @@ import os
 import torch
 import numpy as np
 from net.model_pl import NILMnet
+from data.load_data import ukdale_appliance_data
 from net.utils import DictLogger
 from pathlib import Path
 import pytorch_lightning as pl
@@ -45,7 +46,10 @@ class NILMExperiment(object):
      
 
     def fit(self):
-        file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}"
+        if self.params['benchmark']=="single-appliance":
+            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_{self.params['benchmark']}_{self.params['appliances'][0]}"
+        else:  
+            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_{self.params['benchmark']}"  
         self.saved_model_path   = f"{self.checkpoint_path}/{file_name}_checkpoint.pt"
         self.arch = file_name
         checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
@@ -69,41 +73,20 @@ class NILMExperiment(object):
         print(f"fit model for { file_name}")
         trainer.fit(model)
         results = trainer.test(model)
-        results_path = f"{self.results_path}{self.params['exp_name']}"
-        np.save(results_path+"results.npy", results)
+        results_path = f"{self.results_path}{self.params['exp_name']}_{self.params['benchmark']}"
+        return results, results_path
            
             
     
-def refit_exp(model_name="CNN1DTransformer"): 
-    batch_size = 128
-    epochs = 50
-    sequence_length =99
-    sample = None
-    dropout = 0.25
-    data = "refit"
-    exp_name = f"REFIT_{model_name}"
-    out_size = 5
-    denoise = True
-    params = {'n_epochs':epochs,'batch_size':batch_size,
-                'sequence_length':sequence_length,
-                'model_name':model_name,
-                'dropout':dropout,
-                'exp_name':exp_name,
-                'clip_value':10,
-                'sample':sample,
-                'out_size':out_size,
-                'data_path':"../data/",
-                'data':data,
-                "denoise":denoise,
-                 "checkpoint_path" :f"../checkpoints/{exp_name}_{model_name}"
-                }
-    exp = NILMExperiment(params)
-    exp.partial_fit()
+
 
 def run_experiments(model_name="CNN1D", denoise=True,
                      batch_size = 128, epochs = 50,
                     sequence_length =99, sample = None, 
                     dropout = 0.25, data = "ukdale", 
+                    benchmark="single-appliance",
+                    appliance_id = 0,
+                    appliances = ["FRZ"],
                     out_size = 5, quantiles=[0.0025,0.1, 0.5, 0.9, 0.975]):        
     exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else "{data}_{model_name}"
     params = {'n_epochs':epochs,'batch_size':batch_size,
@@ -111,9 +94,13 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 'model_name':model_name,
                 'dropout':dropout,
                 'exp_name':exp_name,
+                'benchmark':benchmark,
                 'clip_value':10,
                 'sample':sample,
                 'out_size':out_size,
+                'appliance_id':appliance_id,
+                'appliances':appliances,
+                'out_size':len(appliances),
                 'data_path':"../data/",
                 'data':data,
                 'quantiles':quantiles,
@@ -121,12 +108,29 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 "checkpoint_path" :f"../checkpoints/{exp_name}"
                 }
     exp = NILMExperiment(params)
-    exp.fit()
+    results, results_path=exp.fit()
+    return results, results_path
 
 if __name__ == "__main__": 
-    for data in ["ukdale", "refit"]:
-        for model_name in ["CNN1D", "UNETNiLM"]:
-            run_experiments(model_name=model_name, data = data, sample=None, epochs=50)       
+    
+    for data in ["ukdale"]:
+        for model_name in ["CNN1D",'NiLMTransformer', 'UNETNiLM']:
+            results = {}
+            for idx, app in enumerate(list(ukdale_appliance_data.keys())):
+                result, save_path=run_experiments(model_name=model_name, data = data, 
+                                sample=None, epochs=50, appliances=[app],
+                                appliance_id=idx, benchmark="single-appliance")  
+                results[app]=result
+            np.save(save_path+"results.npy", results)
+            
+            
+    for data in ["ukdale"]:
+        for model_name in ["CNN1D", 'UNETNiLM']:
+            results = {}
+            result, save_path=run_experiments(model_name=model_name, data = data, 
+                                sample=None, epochs=50, appliances=list(ukdale_appliance_data.keys()),
+                                appliance_id=None, benchmark="mutli-appliance")  
+            np.save(save_path+"results.npy", results)                        
             
     
     

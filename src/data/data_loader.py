@@ -33,8 +33,8 @@ class Dataset(torch.utils.data.Dataset):
         self.inputs = inputs
         self.targets = targets
         self.states  = states
-        seq_len = seq_len  #if seq_len% 2==0 else seq_len+1
-        self.seq_len = seq_len+1
+        seq_len = seq_len  if seq_len% 2==0 else seq_len+1
+        self.seq_len = seq_len
         self.len = self.inputs.shape[0] - self.seq_len
         self.indices = np.arange(self.inputs.shape[0])
     def __len__(self):
@@ -52,3 +52,24 @@ class Dataset(torch.utils.data.Dataset):
         inputs, target, state = self.get_sample(index)
         return torch.tensor(inputs).unsqueeze(-1).float(), torch.tensor(target).float().squeeze(), torch.tensor(state).long().squeeze()
     
+
+class Seq2PointDataset(torch.utils.data.Dataset):
+    def __init__(self,  inputs, targets, states,  seq_len=99):
+        self.targets = targets
+        self.states  = states
+        seq_len = seq_len-1  if seq_len% 2==0 else seq_len
+        units_to_pad = seq_len // 2
+        new_mains = np.pad(inputs ,(units_to_pad,units_to_pad),'constant',constant_values=(0,0))
+        self.inputs  = np.array([new_mains[i:i + seq_len ] for i in range(len(new_mains) - seq_len  + 1)])
+        self.len = self.inputs.shape[0] 
+        self.indices = np.arange(self.inputs.shape[0])
+    def __len__(self):
+        'Denotes the total number of samples'
+        return self.len
+    
+    def get_sample(self, index):
+        return self.inputs[index], self.targets[index], self.states[index]
+
+    def __getitem__(self, index):
+        inputs, target, state = self.get_sample(index)
+        return torch.tensor(inputs).unsqueeze(-1).float(), torch.tensor(target).float().squeeze(), torch.tensor(state).long().squeeze()

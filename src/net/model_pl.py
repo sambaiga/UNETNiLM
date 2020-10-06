@@ -6,8 +6,9 @@ import torch
 import torch.nn.functional as F
 from argparse import ArgumentParser
 from .modules import CNN1DModel,  UNETNiLM
+from .transformer import NILMTransformer
 from net.metrics import  compute_metrics, example_f1_score, compute_regress_metrics
-from data.load_data import ukdale_appliance_data, refit_appliance_data
+from data.load_data import ukdale_appliance_data 
 from data.data_loader import Dataset, load_data, spilit_refit_test
 from .utils import ObjectDict, QuantileLoss
 from pytorch_lightning.metrics.functional import f1_score
@@ -39,13 +40,25 @@ class NILMnet(pl.LightningModule):
                                n_quantiles=len(self.hparams.quantiles),
                                pool_filter=self.hparams.d_model//4
                                )  
-            
+        
+        elif self.hparams.model_name=="NiLMTransformer":
+            self.model =  NILMTransformer(seq_len=self.hparams.seq_len  if self.hparams.seq_len% 2==0 else self.hparams.seq_len+1,
+                                          patch_size=self.hparams.seq_len//10, 
+                                          num_classes=self.hparams.out_size, 
+                                          dim=self.hparams.seq_len, 
+                                          depth=self.hparams.n_layers, heads=8, 
+                                          mlp_dim=self.hparams.d_model, 
+                                          channels = self.hparams.in_size, 
+                                          n_quantiles=len(self.hparams.quantiles))      
     def forward(self, x):
             return self.model(x)        
         
     def _step(self, batch):
         x, y, z = batch
-        B, T = y.size()
+        if self.hparams.benchmark=="single-appliance":
+            y = y.unsqueeze(-1)
+            z = z.unsqueeze(-1)
+        B = x.size(0)
         logits, rmse_logits = self(x)
         loss_nll   = F.nll_loss(F.log_softmax(logits, 1), z)
         if len(self.hparams.quantiles)>1:
@@ -83,7 +96,10 @@ class NILMnet(pl.LightningModule):
     
     def test_step(self, batch, batch_idx):
         x, y, z = batch
-        B, T = y.size()
+        B = x.size(0)
+        if self.hparams.benchmark=="single-appliance":
+            y = y.unsqueeze(-1)
+            z = z.unsqueeze(-1)
         logits, pred_power  = self(x)
         pred_state = torch.max(F.softmax(logits, 1), 1)[1]
         logs = {"pred_power":pred_power, "pred_state":pred_state, "power":y, "state":z}
@@ -96,13 +112,14 @@ class NILMnet(pl.LightningModule):
         power = torch.cat([x['power'] for x in outputs], 0).cpu().numpy()
         state = torch.cat([x['state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
         
-        appliance_data = ukdale_appliance_data if self.hparams.data=="ukdale" else refit_appliance_data
+        appliance_data = ukdale_appliance_data
         import pandas as pd
         print(pred_power.shape)
         if len(self.hparams.quantiles)>1:
             regress_results = {}
-            for idx, app in enumerate(list(appliance_data.keys())):
+            for idx, app in enumerate(self.hparams.appliances):
                 quantile_regress_results = []
+                #print(app)
                 power[:,idx] = (power[:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
                 for q_i, q in enumerate(self.hparams.quantiles):
                     pred_power[:,q_i, idx] = (pred_power[:,q_i, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
@@ -117,7 +134,7 @@ class NILMnet(pl.LightningModule):
         else:    
             regress_results = []
             
-            for idx, app in enumerate(list(appliance_data.keys())):
+            for idx, app in enumerate(self.hparams.appliances):
                 
                 pred_power[:,idx] = (pred_power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
                 pred_power[:,idx] = np.where(pred_power[:,idx]<0, 0, pred_power[:,idx])
@@ -150,7 +167,7 @@ class NILMnet(pl.LightningModule):
         return [optim], [scheduler]
         
     
-    @pl.data_loader
+   
     def train_dataloader(self):
         
         data = Dataset(self._get_cache_data()['x_train'], self._get_cache_data()['y_train'], 
@@ -159,7 +176,7 @@ class NILMnet(pl.LightningModule):
                                             shuffle=True,pin_memory=True,
                                             num_workers=self.hparams.num_workers)
         
-    @pl.data_loader
+    
     def val_dataloader(self):
         
         data = Dataset(self._get_cache_data()['x_val'], self._get_cache_data()['y_val'], 
@@ -167,7 +184,7 @@ class NILMnet(pl.LightningModule):
         return torch.utils.data.DataLoader(data,batch_size=self.hparams.batch_size,
                                             shuffle=False,pin_memory=True,
                                             num_workers=self.hparams.num_workers)  
-    @pl.data_loader     
+       
     def test_dataloader(self):
         
         data = Dataset(self._get_cache_data()['x_test'], self._get_cache_data()['y_test'], 
@@ -178,35 +195,19 @@ class NILMnet(pl.LightningModule):
     
     def _get_cache_data(self):
         if self._data is None:
-            '''
-            if self.hparams.data =="ukdale":
-                x_train, y_train, z_train = load_data(data_path=self.hparams.data_path, 
-                                                    data_type="training", 
-                                                    sample=self.hparams.sample,
-                                                    data=self.hparams.data,
-                                                    denoise=self.hparams.denoise)
-                
-                x_test, y_test, z_test = load_data(data_path=self.hparams.data_path, 
-                                                    data_type="test", 
-                                                    sample=self.hparams.sample,
-                                                     data=self.hparams.data,
-                                                    denoise=self.hparams.denoise)
-                x_val, y_val, z_val = load_data(data_path=self.hparams.data_path, 
-                                                    data_type="validation", 
-                                                    sample=self.hparams.sample,
-                                                     data=self.hparams.data,
-                                                    denoise=self.hparams.denoise)
-            '''                                        
-           
             x , y , z = load_data(data_path=self.hparams.data_path, 
                                                     data_type="test" if self.hparams.data=="refit" else "training", 
                                                     sample=self.hparams.sample,
                                                      data=self.hparams.data,
                                                     denoise=self.hparams.denoise) 
             x_train, x_val, x_test = spilit_refit_test(x)
-            y_train, y_val, y_test = spilit_refit_test(y)
-            z_train, z_val, z_test = spilit_refit_test(z)       
-           
+            if self.hparams.benchmark=="single-appliance":
+                y_train, y_val, y_test = spilit_refit_test(y[:,self.hparams.appliance_id][:,None])
+                #print(y_train.shape)
+                z_train, z_val, z_test = spilit_refit_test(z[:,self.hparams.appliance_id][:,None])
+            else:       
+                y_train, y_val, y_test = spilit_refit_test(y)
+                z_train, z_val, z_test = spilit_refit_test(z) 
            
            
             self._data = dict(x_test=x_test, y_test=y_test, z_test=z_test,
@@ -235,12 +236,15 @@ class NILMnet(pl.LightningModule):
         parser.add_argument('--d_model', default=128, type=int)
         parser.add_argument('--pool_filter', default=8, type=int)
         parser.add_argument('--n_layers', default=5, type=int)
-        parser.add_argument('--seq_len', default=99, type=int)
+        parser.add_argument('--seq_len', default=100, type=int)
         parser.add_argument('--out_size', default=5, type=int)
         parser.add_argument('--in_size', default=1, type=int)
         parser.add_argument('--denoise', default=False, type=bool)
         parser.add_argument('--num_head', default=8, type=int)
         parser.add_argument('--model_name', default="CNN1D", type=str)
+        parser.add_argument('--benchmark', default="Seq2Point", type=str)
+        parser.add_argument('--appliance_id', default=0, type=int)
+        parser.add_argument('--appliances', default=list(ukdale_appliance_data.keys()), type=list)
         parser.add_argument('--data', default="ukdale", type=str)
         parser.add_argument('--quantiles', default=[0.0025,0.1, 0.5, 0.9, 0.975], type=list)
         parser.add_argument('--num_workers', default=4, type=int)
