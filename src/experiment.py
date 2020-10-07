@@ -48,11 +48,7 @@ class NILMExperiment(object):
      
 
     def fit(self):
-        if self.params['benchmark']=="single-appliance":
-            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_single-appliance_{self.params['appliances'][0]}"
-        else:  
-            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_multi-appliance"  
-        self.saved_model_path   = f"{self.checkpoint_path}/{file_name}_checkpoint.pt"
+        file_name = self.params['file_name']
         self.arch = file_name
         checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
         early_stopping = pl.callbacks.EarlyStopping(monitor='val_F1', min_delta=1e-4, patience=20, mode="max")
@@ -99,6 +95,11 @@ def run_experiments(model_name="CNN1D", denoise=True,
                     appliances = ["FRZ"],
                     out_size = 5, quantiles=[0.0025,0.1, 0.5, 0.9, 0.975]):        
     exp_name = f"{data}_{model_name}_quantiles" if len(quantiles)>1 else "{data}_{model_name}"
+    if benchmark=="single-appliance":
+        file_name = f"{exp_name}_single-appliance_{appliances[0]}"
+    else:
+        file_name = f"{exp_name}_multi-appliance"      
+    
     params = {'n_epochs':epochs,'batch_size':batch_size,
                 'sequence_length':sequence_length,
                 'model_name':model_name,
@@ -115,7 +116,8 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 'data':data,
                 'quantiles':quantiles,
                 "denoise":denoise,
-                "checkpoint_path" :f"../checkpoints/{exp_name}"
+                'file_name':file_name,
+                "checkpoint_path" :f"../checkpoints/{file_name}/"
                 }
     exp = NILMExperiment(params)
     results, results_path=exp.fit()
