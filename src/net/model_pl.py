@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from argparse import ArgumentParser
 from .modules import CNN1DModel,  UNETNiLM
 from .transformer import NILMTransformer
-from net.metrics import  compute_metrics, example_f1_score, compute_regress_metrics
+from net.metrics import  compute_metrics, compute_regress_metrics, get_results_summary
 from data.load_data import ukdale_appliance_data 
 from data.data_loader import Dataset, load_data, spilit_refit_test
 from .utils import ObjectDict, QuantileLoss
@@ -60,16 +60,21 @@ class NILMnet(pl.LightningModule):
             z = z.unsqueeze(-1)
         B = x.size(0)
         logits, rmse_logits = self(x)
+        prob, pred = torch.max(F.softmax(logits, 1), 1)
+        prob = prob.detach()
         loss_nll   = F.nll_loss(F.log_softmax(logits, 1), z)
         if len(self.hparams.quantiles)>1:
+            prob=prob.unsqueeze(1).expand_as(rmse_logits)
+            rmse_logits = rmse_logits*prob
             loss_mse = self.q_criterion(rmse_logits, y)
             mae_score = F.l1_loss(rmse_logits,y.unsqueeze(1).expand_as(rmse_logits))
         else:    
+            rmse_logits = rmse_logits*prob
             loss_mse = F.mse_loss(rmse_logits, y)
             mae_score = F.l1_loss(rmse_logits, y)
             
         loss = loss_nll + loss_mse
-        pred = torch.max(F.softmax(logits, 1), 1)[1]
+        
         res = f1_score(pred, z)
         logs = {"nlloss":loss_nll, "mseloss":loss_mse,
                  "mae":mae_score, "F1": res}
@@ -94,67 +99,75 @@ class NILMnet(pl.LightningModule):
         logs = {'val_loss': avg_loss, "val_F1": avg_f1, "val_mae":avg_rmse}
         return {'log':logs}
     
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch,batch_idx):
         x, y, z = batch
         B = x.size(0)
         if self.hparams.benchmark=="single-appliance":
             y = y.unsqueeze(-1)
             z = z.unsqueeze(-1)
         logits, pred_power  = self(x)
-        pred_state = torch.max(F.softmax(logits, 1), 1)[1]
+        
+        prob, pred_state = torch.max(F.softmax(logits, 1), 1)
+        if len(self.hparams.quantiles)>1:
+            prob=prob.unsqueeze(1).expand_as(pred_power)
+            pred_power = pred_power*prob
+        else: 
+            pred_power = pred_power*prob   
         logs = {"pred_power":pred_power, "pred_state":pred_state, "power":y, "state":z}
         return logs
     
     def test_epoch_end(self, outputs):
         
+        appliance_data = ukdale_appliance_data
         pred_power = torch.cat([x['pred_power'] for x in outputs], 0).cpu().numpy()
         pred_state = torch.cat([x['pred_state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
         power = torch.cat([x['power'] for x in outputs], 0).cpu().numpy()
         state = torch.cat([x['state'] for x in outputs], 0).cpu().numpy().astype(np.int32)
         
-        appliance_data = ukdale_appliance_data
-        import pandas as pd
-        print(pred_power.shape)
-        if len(self.hparams.quantiles)>1:
-            regress_results = {}
-            for idx, app in enumerate(self.hparams.appliances):
-                quantile_regress_results = []
-                #print(app)
-                power[:,idx] = (power[:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                for q_i, q in enumerate(self.hparams.quantiles):
-                    pred_power[:,q_i, idx] = (pred_power[:,q_i, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                    pred_power[:,q_i, idx] = np.where(pred_power[:,q_i, idx]<0, 0, pred_power[:,q_i, idx])
-                    result = compute_regress_metrics(power[:,idx], pred_power[:,q_i, idx])
-                    result = pd.DataFrame.from_dict(result, orient="index")
-                    quantile_regress_results.append(result)
-                quantile_regress_results = pd.concat(quantile_regress_results, axis=1) 
-                quantile_regress_results.columns = [str(round(q*100,2)) for q in self.hparams.quantiles]   
-                regress_results[app] = quantile_regress_results
-                     
-        else:    
-            regress_results = []
-            
-            for idx, app in enumerate(self.hparams.appliances):
-                
-                pred_power[:,idx] = (pred_power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                pred_power[:,idx] = np.where(pred_power[:,idx]<0, 0, pred_power[:,idx])
-                power[:,idx] = (power[:,idx] * appliance_data[app]['std']) + appliance_data[app]['std']
-                result = compute_regress_metrics(power[:,idx], pred_power[:,idx])
-                result = pd.DataFrame.from_dict(result, orient="index")
-                regress_results.append(result)
-            
-            regress_results = pd.concat(regress_results, axis=1)
-            regress_results.columns = list(appliance_data.keys())
-            regress_results = regress_results.append(exbF1)  
+        for idx, app in enumerate(self.hparams.appliances):
+            power[:,idx] = (power[:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
+            if len(self.hparams.quantiles)>=2:
+                pred_power[:,:, idx] = (pred_power[:,:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
+                pred_power[:,:, idx] = np.where(pred_power[:,:, idx]<0, 0, pred_power[:,:, idx])
+            else:
+                pred_power[:, idx] = (pred_power[:, idx] * appliance_data[app]['std']) + appliance_data[app]['std']
+                pred_power[:, idx] = np.where(pred_power[:, idx]<0, 0, pred_power[:, idx])    
         
-        #exbF1={"exbF1":example_f1_score(state,pred_state, per_sample=True, axis=0)} 
-        #exbF1=pd.DataFrame.from_dict(exbF1, orient="index")  
-        #exbF1.columns = list(appliance_data.keys())
-        results = compute_metrics(state, pred_state, all_metrics=True, verbose=False)
-        results=pd.DataFrame.from_dict(results, orient="index")
-        logs = {"pred_power":pred_power, "pred_state":pred_state, 
-                "power":power, "state":state,  'results':results, 'reg_results':regress_results}
-        return logs
+        if len(self.hparams.quantiles)>=2:
+            idx = len(self.hparams.quantiles)//2
+            y_pred = pred_power[:,idx]
+        else:
+            y_pred = pred_power 
+               
+        per_app_results, avg_results = get_results_summary(state, pred_state, 
+                                                                 power, y_pred,
+                                                                 self.hparams.appliances, 
+                                                                 self.hparams.data)  
+        logs = {"pred_power":pred_power, 
+                "pred_state":pred_state, 
+                "power":power, 
+                "state":state,  
+                'app_results':per_app_results, 
+                'avg_results':avg_results} 
+        return logs       
+        
+    def predict(self, model, dataloader):
+        outputs = []
+        model = model.eval()
+        batch_size   = dataloader.batchsize if hasattr(dataloader, 'len') else dataloader.batch_size
+        num_batches = len(dataloader)
+        values = range(num_batches)
+        with tqdm(total=len(values), file=sys.stdout) as pbar:
+             with torch.no_grad():
+                for batch_idx, batch in enumerate(dataloader):
+                    logs = self.test_step(batch, batch_idx, model)
+                    outputs.append(logs)
+                    del  batch
+                    pbar.set_description('processed: %d' % (1 + batch_idx))
+                    pbar.update(1)
+                pbar.close()
+        outputs = self.test_epoch_end(outputs)   
+        return outputs      
         
         
     def configure_optimizers(self):  

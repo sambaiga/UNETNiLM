@@ -3,36 +3,18 @@ import math
 import numpy as np
 from sklearn.metrics import f1_score, mean_absolute_error, mean_squared_error
 from collections import OrderedDict
-
-def relative_error_total_energy(target, prediction):
-    E_pred = np.sum(prediction)
-    E_ground = np.sum(target)
-    return np.abs(E_pred - E_ground) / float(max(E_pred,E_ground))
+import pandas as pd
 
 def get_mae(target, prediction):
-    return mean_absolute_error(target, prediction)
+    return np.abs(target - prediction).mean(axis=0)
 
 def get_eac(target, prediction):
-    num = np.abs(target - prediction).sum()
-    den = 2*target.sum()
-    return (1 - num/den)
-
-def get_relative_error(target, prediction):
-    return np.mean(np.nan_to_num(np.abs(target - prediction) / np.maximum(target, prediction)))
-
+     num = np.abs(target - prediction).sum(axis=0)
+     den = 2*target.sum(axis=0)
+     return (1 - num/den)
 
 def get_nde(target, prediction):
-    return np.sum((target - prediction) ** 2) / np.sum((target ** 2))
-
-def get_sae(target, prediction, sample_second):
-    '''
-    compute the signal aggregate error
-    sae = |\hat(r)-r|/r where r is the ground truth total energy;
-    \hat(r) is the predicted total energy.
-    '''
-    r = np.sum(target * sample_second * 1.0 / 3600.0)
-    rhat = np.sum(prediction * sample_second * 1.0 / 3600.0)
-    return np.abs(r - rhat) / np.abs(r)
+    return np.sum((target - prediction) ** 2) / np.sum((target ** 2), axis=0) 
 
 def subset_accuracy(true_targets, predictions, per_sample=False, axis=1):
     result = np.all(true_targets == predictions, axis=axis)
@@ -131,71 +113,56 @@ def f1_score(true_targets, predictions, average='micro', axis=1):
 
     return f1
 
-
-def compute_metrics(all_predictions,all_targets,all_metrics=True,verbose=False):
-        
-    acc_ = list(subset_accuracy(all_targets, all_predictions, axis=1, per_sample=True))
-    hl_ = list(hamming_loss(all_targets, all_predictions, axis=1, per_sample=True))
-    exf1_ = list(example_f1_score(all_targets, all_predictions, axis=0, per_sample=True))
-    exjacc_ = list(compute_jaccard_score(all_targets, all_predictions, per_sample=True))
-          
-    acc = round(np.mean(acc_), 4)
-    hl = round(np.mean(hl_), 4)
-    exf1 = round(np.mean(exf1_), 4)
-    per_app_fscore = exf1_
-    
-
-    tp, fp, fn = compute_tp_fp_fn(all_targets, all_predictions, axis=0)
+def compute_metrics(y_t, y_p):
+    tp, fp, fn = compute_tp_fp_fn(y_t, y_p, axis=0)
     mif1 = round(f1_score_from_stats(tp, fp, fn, average='micro'),4)
     maf1 = round(f1_score_from_stats(tp, fp, fn, average='macro'),4)
-    
-    eval_ret = OrderedDict([('Subset accuracy', acc),
-                        ('Hamming accuracy', 1 - hl),
-                        ('Example-based F1', exf1),
-                        ('Label-based Micro F1', mif1),
-                        ('Label-based Macro F1', maf1)])
-
-    
-    ACC = eval_ret['Subset accuracy']
-    HA = eval_ret['Hamming accuracy']
-    ebF1 = eval_ret['Example-based F1']
-    miF1 = eval_ret['Label-based Micro F1']
-    maF1 = eval_ret['Label-based Macro F1']
-    if verbose:
-        print('ACC:   '+str(ACC))
-        print('HA:    '+str(HA))
-        print('ebF1:  '+str(ebF1))
-        print('miF1:  '+str(miF1))
-        print('maF1:  '+str(maF1))
-        
-        
+    hl_ = hamming_loss(y_t, y_p, axis=0, per_sample=True)
+    exf1_ = list(example_f1_score(y_t, y_p, axis=0, per_sample=True))
+    hl = round(np.mean(hl_), 4)
+    exf1 = round(np.mean(exf1_), 4)
     
     metrics_dict = {}
-    metrics_dict['subACC'] = ACC
-    #metrics_dict['JACC'] = jacc
-    #metrics_dict['exACC'] = acc_
-    metrics_dict['appF1'] = per_app_fscore
-    #metrics_dict['exHA'] = hl_
-    metrics_dict['HA'] = HA
-    metrics_dict['ebF1'] = ebF1
-    metrics_dict['miF1'] = miF1
-    metrics_dict['maF1'] = maF1
+    metrics_dict['appF1'] = exf1_ 
+    metrics_dict['HA'] = hl_
+    metrics_dict['ebF1'] = exf1
+    metrics_dict['miF1'] = mif1
+    metrics_dict['maF1'] = maf1
     return metrics_dict
 
 
-def compute_regress_metrics(target, prediction):
-    eac = get_eac(target, prediction)
-    mae = get_mae(target, prediction)
-    nade = get_nde(target, prediction)
-    
-   
-    metrics = OrderedDict([('EAC', eac),
-                        ('MAE', mae),
-                        ('NDE', nade)])
-    
+def compute_regress_metrics(y_t, y_p):
+    eac = get_eac(y_t, y_p)
+    nde = get_nde(y_t, y_p)
+    mae = get_mae(y_t, y_p)
     metrics_dict = {}
-    metrics_dict['EAC'] = metrics["EAC"]
-    metrics_dict['MAE'] = metrics["MAE"]
-    metrics_dict['NDE'] = metrics["NDE"]
-    
+    metrics_dict['EAC'] = eac
+    metrics_dict['NDE'] = nde
+    metrics_dict['MAE'] = mae
     return metrics_dict
+
+def get_results_summary(z_t, z_p, y_t, y_p, appliances, data="UKDALE"):
+    
+    reg = compute_regress_metrics(y_t, y_p)
+    mlb = compute_metrics(z_t, z_p)
+    
+    per_app = {'EAC': reg['EAC'].tolist(),
+          'NDE': reg['NDE'].tolist(),
+          'MAE': reg['MAE'].tolist(),
+          'exbF1': mlb['appF1'],
+          'HA': (1-mlb['HA']).tolist()}
+    per_app =pd.DataFrame.from_dict(per_app, orient="index")
+    per_app.columns = appliances
+    avg_results = {'EAC': reg['EAC'].mean().tolist(),
+          'NDE': reg['NDE'].mean().tolist(),
+          'MAE': reg['MAE'].mean().tolist(),
+          'exbF1': mlb['ebF1'].tolist(),
+           'maF1': mlb['maF1'].tolist(),
+           'miF1': mlb['miF1'].tolist(),
+          'HA': (1-mlb['HA']).mean().tolist()}
+    avg_results =pd.DataFrame.from_dict(avg_results, orient="index")
+    avg_results.columns = [data]
+    return per_app, avg_results
+
+
+

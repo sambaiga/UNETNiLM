@@ -75,11 +75,7 @@ class NILMTransformer(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.transformer = Transformer(dim, depth, heads, mlp_dim)
         self.to_cls_token = nn.Identity()
-        self.mlp_head = nn.Sequential(
-            nn.Linear(dim, mlp_dim),
-            nn.GELU(),
-            nn.Linear(mlp_dim, num_classes)
-        )
+        
         self.mlp_classifier = nn.Sequential(
             nn.Linear(dim, mlp_dim),
             nn.GELU(),
@@ -92,6 +88,7 @@ class NILMTransformer(nn.Module):
         
     def forward(self, x):
         p = self.patch_size
+        x = x.permute(0,2,1)
         B = x.size(0)
         x  = rearrange(x.unsqueeze(-1), 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p, p2 = 1)
         x  = self.patch_to_embedding(x)

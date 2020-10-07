@@ -11,6 +11,8 @@ from pathlib import Path
 import pytorch_lightning as pl
 from net.utils import get_latest_checkpoint
 from utils.utils import set_seed, get_device
+from IPython.display import clear_output
+
 import sys
 from argparse import ArgumentParser
 set_seed(seed=7777)
@@ -47,9 +49,9 @@ class NILMExperiment(object):
 
     def fit(self):
         if self.params['benchmark']=="single-appliance":
-            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_{self.params['benchmark']}_{self.params['appliances'][0]}"
+            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_single-appliance_{self.params['appliances'][0]}"
         else:  
-            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_{self.params['benchmark']}"  
+            file_name = f"{self.MODEL_NAME}_{self.params['exp_name']}_multi-appliance"  
         self.saved_model_path   = f"{self.checkpoint_path}/{file_name}_checkpoint.pt"
         self.arch = file_name
         checkpoint_callback = pl.callbacks.ModelCheckpoint(filepath=self.checkpoint_path, monitor='val_F1', mode="max", save_top_k=1)
@@ -66,15 +68,23 @@ class NILMExperiment(object):
                      )
         
         hparams = NILMnet.add_model_specific_args()
-        
         hparams = vars(hparams.parse_args())
-        hparams.update(self.params)
+        hparams.update(params)
         model = NILMnet(hparams)
         print(f"fit model for { file_name}")
         trainer.fit(model)
-        results = trainer.test(model)
-        results_path = f"{self.results_path}{self.params['exp_name']}_{self.params['benchmark']}"
-        return results, results_path
+        # (1) load the best checkpoint automatically (lightning tracks this for you)
+        results=trainer.test()
+        clear_output()
+        print(results[0]['app_results'])
+        
+        
+        results_path = f"{self.results_path}{file_name}"
+        return results[0], results_path
+        
+        
+    
+   
            
             
     
@@ -109,26 +119,28 @@ def run_experiments(model_name="CNN1D", denoise=True,
                 }
     exp = NILMExperiment(params)
     results, results_path=exp.fit()
+   
     return results, results_path
 
 if __name__ == "__main__": 
-    
+    sample=None
+    epochs=10
     for data in ["ukdale"]:
-        for model_name in ["CNN1D",'NiLMTransformer', 'UNETNiLM']:
+        for model_name in ["CNN1D"]:
             results = {}
             for idx, app in enumerate(list(ukdale_appliance_data.keys())):
                 result, save_path=run_experiments(model_name=model_name, data = data, 
-                                sample=None, epochs=50, appliances=[app],
+                                sample=sample, epochs=epochs, appliances=[app],
                                 appliance_id=idx, benchmark="single-appliance")  
                 results[app]=result
             np.save(save_path+"results.npy", results)
             
             
     for data in ["ukdale"]:
-        for model_name in ["CNN1D", 'UNETNiLM']:
+        for model_name in ["CNN1D"]:
             results = {}
             result, save_path=run_experiments(model_name=model_name, data = data, 
-                                sample=None, epochs=50, appliances=list(ukdale_appliance_data.keys()),
+                                sample=sample, epochs=epochs, appliances=list(ukdale_appliance_data.keys()),
                                 appliance_id=None, benchmark="mutli-appliance")  
             np.save(save_path+"results.npy", results)                        
             
