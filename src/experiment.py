@@ -124,7 +124,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
 
 if __name__ == "__main__": 
     sample=None
-    epochs=10
+    epochs=50
     for data in ["ukdale"]:
         for model_name in ["CNN1D"]:
             results = {}
