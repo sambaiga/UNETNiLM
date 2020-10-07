@@ -69,7 +69,7 @@ class NILMExperiment(object):
         
         hparams = NILMnet.add_model_specific_args()
         hparams = vars(hparams.parse_args())
-        hparams.update(params)
+        hparams.update(hparams)
         model = NILMnet(hparams)
         print(f"fit model for { file_name}")
         trainer.fit(model)
@@ -123,7 +123,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
     return results, results_path
 
 if __name__ == "__main__": 
-    sample=None
+    sample=50000
     epochs=50
     for data in ["ukdale"]:
         for model_name in ["CNN1D"]:
