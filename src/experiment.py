@@ -67,10 +67,10 @@ class NILMExperiment(object):
                     resume_from_checkpoint=get_latest_checkpoint(self.checkpoint_path)
                      )
         
-        hparams = NILMnet.add_model_specific_args()
-        hparams = vars(hparams.parse_args())
-        hparams.update(hparams)
-        model = NILMnet(hparams)
+        self.hparams = NILMnet.add_model_specific_args()
+        self.hparams = vars(self.hparams.parse_args())
+        self.hparams.update(self.params)
+        model = NILMnet(self.hparams)
         print(f"fit model for { file_name}")
         trainer.fit(model)
         # (1) load the best checkpoint automatically (lightning tracks this for you)
@@ -124,7 +124,7 @@ def run_experiments(model_name="CNN1D", denoise=True,
 
 if __name__ == "__main__": 
     sample=50000
-    epochs=50
+    epochs=10
     for data in ["ukdale"]:
         for model_name in ["CNN1D"]:
             results = {}
