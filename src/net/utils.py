@@ -10,7 +10,7 @@ class QuantileLoss(torch.nn.Module):
     def forward(self, inputs, targets):
         targets = targets.unsqueeze(1).expand_as(inputs)
         quantiles = torch.tensor(self.quantiles).float().to(targets.device)
-        error = targets - inputs
+        error = (targets - inputs).permute(0,2,1)
         loss = torch.max(quantiles*error, (quantiles-1)*error)
         return loss.mean()
         
