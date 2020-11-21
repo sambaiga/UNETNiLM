@@ -11,13 +11,11 @@ Nonintrusive load monitoring (NILM), or nonintrusive appliance load monitoring (
 
 ## Software requirements
 We list our main python packages that are required. In principle our code should work with many different versions. Not all of these libraries are needed and the critical libraries that we use are:
-* Python 3 (3.6.7)
-* PyTorch 1.3.1 & torchvision 0.4.2 
-* NILMTK 0.3.x
+* Python 3 (3.6.7
 * sklearn
 * pandas
 * numpy
-* pytorch_lightning
+* [pytorch_lightning](https://www.pytorchlightning.ai/)
 
 and for visualization:
 * Matplotlib 3.0.2
