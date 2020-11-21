@@ -128,7 +128,7 @@ if __name__ == "__main__":
     sample=None
     epochs=50
     for data in ["ukdale"]:
-        for model_name in ["CNN1D"]:
+        for model_name in ["CNN1D", "UNETNiLM"]:
             results = {}
             for idx, app in enumerate(list(ukdale_appliance_data.keys())):
                 result, save_path=run_experiments(model_name=model_name, data = data, 
@@ -139,7 +139,7 @@ if __name__ == "__main__":
             
             
     for data in ["ukdale"]:
-        for model_name in ["CNN1D"]:
+        for model_name in ["CNN1D", "UNETNiLM"]:
             results = {}
             result, save_path=run_experiments(model_name=model_name, data = data, 
                                 sample=sample, epochs=epochs, appliances=list(ukdale_appliance_data.keys()),
