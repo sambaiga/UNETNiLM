@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 from argparse import ArgumentParser
 from .modules import CNN1DModel,  UNETNiLM
-from .transformer import NILMTransformer
 from net.metrics import  compute_metrics, compute_regress_metrics, get_results_summary
 from data.load_data import ukdale_appliance_data 
 from data.data_loader import Dataset, load_data, spilit_refit_test
@@ -41,15 +40,7 @@ class NILMnet(pl.LightningModule):
                                pool_filter=self.hparams.d_model//4
                                )  
         
-        elif self.hparams.model_name=="NiLMTransformer":
-            self.model =  NILMTransformer(seq_len=self.hparams.seq_len  if self.hparams.seq_len% 2==0 else self.hparams.seq_len+1,
-                                          patch_size=self.hparams.seq_len//10, 
-                                          num_classes=self.hparams.out_size, 
-                                          dim=self.hparams.seq_len, 
-                                          depth=self.hparams.n_layers, heads=8, 
-                                          mlp_dim=self.hparams.d_model, 
-                                          channels = self.hparams.in_size, 
-                                          n_quantiles=len(self.hparams.quantiles))      
+         
     def forward(self, x):
             return self.model(x)        
         
@@ -61,15 +52,12 @@ class NILMnet(pl.LightningModule):
         B = x.size(0)
         logits, rmse_logits = self(x)
         prob, pred = torch.max(F.softmax(logits, 1), 1)
-        prob = prob.detach()
         loss_nll   = F.nll_loss(F.log_softmax(logits, 1), z)
         if len(self.hparams.quantiles)>1:
             prob=prob.unsqueeze(1).expand_as(rmse_logits)
-            rmse_logits = rmse_logits*prob
             loss_mse = self.q_criterion(rmse_logits, y)
             mae_score = F.l1_loss(rmse_logits,y.unsqueeze(1).expand_as(rmse_logits))
         else:    
-            rmse_logits = rmse_logits*prob
             loss_mse = F.mse_loss(rmse_logits, y)
             mae_score = F.l1_loss(rmse_logits, y)
             
@@ -110,9 +98,9 @@ class NILMnet(pl.LightningModule):
         prob, pred_state = torch.max(F.softmax(logits, 1), 1)
         if len(self.hparams.quantiles)>1:
             prob=prob.unsqueeze(1).expand_as(pred_power)
-            pred_power = pred_power*prob
+            
         else: 
-            pred_power = pred_power*prob   
+            
         logs = {"pred_power":pred_power, "pred_state":pred_state, "power":y, "state":z}
         return logs
     
